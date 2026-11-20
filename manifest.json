@@ -1,0 +1,21 @@
+[
+  {
+    "guid": "bd622318-4e30-4155-9f90-f0cbfeeedff2",
+    "name": "Duplicate Finder",
+    "description": "Finds duplicate and similar movies in your library. Read-only.",
+    "overview": "Find duplicate movies in your library.",
+    "owner": "Majid Abdollahi",
+    "category": "General",
+    "imageUrl": "",
+    "versions": [
+      {
+        "version": "0.3.4.0",
+        "changelog": "See CHANGELOG.md in the repository.",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://github.com/abdollahim/jellyfin-plugin-duplicatefinder/releases/download/v0.3.4/Jellyfin.Plugin.DuplicateFinder_0.3.4.0.zip",
+        "checksum": "d9d6572d4513a9957bcd5bcabed1790e",
+        "timestamp": "2026-11-20T00:00:00Z"
+      }
+    ]
+  }
+]
