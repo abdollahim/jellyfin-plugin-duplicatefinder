@@ -29,6 +29,7 @@
         </form>
 
         <h2>Detection</h2>
+        <div id="error" style="color:#ff8a80;margin:0.5em 0;"></div>
         <div id="scope" style="font-size:1.1em;margin:0.5em 0;"></div>
         <div id="cards" style="display:flex;gap:1.5em;flex-wrap:wrap;margin:1em 0;"></div>
         <h3>Skipped</h3>
@@ -40,6 +41,7 @@
     </div>
     <script type="text/javascript">
       (function () {
+        // Jellyfin's API returns PascalCase property names (Eligible, State, ExactGroups).
         var pluginId = 'bd622318-4e30-4155-9f90-f0cbfeeedff2';
         var page = document.querySelector('#DuplicateFinderConfigPage');
         var $ = function (id) { return document.getElementById(id); };
@@ -47,39 +49,43 @@
           return '<div><div style="opacity:.7">' + label + '</div><div style="font-size:1.6em">' + value + '</div></div>';
         };
         var gb = function (bytes) { return (bytes / 1073741824).toFixed(2) + ' GB'; };
+        var showError = function (err) {
+          $('error').textContent = 'Error: ' + (err && err.message ? err.message : err);
+        };
 
         function loadStats() {
-          ApiClient.getJSON(ApiClient.getUrl('DuplicateFinder/Stats')).then(function (s) {
-            $('scope').textContent = 'Detection will run on ' + s.eligible.toLocaleString() + ' movie files.';
-            $('cards').innerHTML = card('Total movies', s.totalMovies)
-              + card('Checked by TMDb ID', s.withTmdb)
-              + card('Checked by title and year', s.withoutTmdb)
-              + card('Multi-part (kept separate)', s.multiPart);
-            var skipped = Object.keys(s.skipped).map(function (r) { return '<li>' + r + ': ' + s.skipped[r] + '</li>'; });
-            var samples = s.skippedSamples.map(function (p) { return '<li style="opacity:.6">' + p + '</li>'; });
+          return ApiClient.getJSON(ApiClient.getUrl('DuplicateFinder/Stats')).then(function (s) {
+            $('error').textContent = '';
+            $('scope').textContent = 'Detection will run on ' + s.Eligible.toLocaleString() + ' movie files.';
+            $('cards').innerHTML = card('Total movies', s.TotalMovies)
+              + card('Checked by TMDb ID', s.WithTmdb)
+              + card('Checked by title and year', s.WithoutTmdb)
+              + card('Multi-part (kept separate)', s.MultiPart);
+            var skipped = Object.keys(s.Skipped).map(function (r) { return '<li>' + r + ': ' + s.Skipped[r] + '</li>'; });
+            var samples = s.SkippedSamples.map(function (p) { return '<li style="opacity:.6">' + p + '</li>'; });
             $('skipped').innerHTML = skipped.concat(samples).join('');
-          });
+          }).catch(showError);
         }
 
         function poll() {
-          ApiClient.getJSON(ApiClient.getUrl('DuplicateFinder/Status')).then(function (j) {
-            $('status').textContent = 'Status: ' + j.state + (j.error ? ' - ' + j.error : '');
-            if (j.state === 'running') { setTimeout(poll, 2000); return; }
-            if (j.state !== 'done') { return; }
-            if (j.exactGroups.length === 0) { $('results').innerHTML = '<p>No exact duplicates found.</p>'; return; }
-            $('results').innerHTML = j.exactGroups.map(function (g, i) {
+          return ApiClient.getJSON(ApiClient.getUrl('DuplicateFinder/Status')).then(function (j) {
+            $('status').textContent = 'Status: ' + j.State + (j.Error ? ' - ' + j.Error : '');
+            if (j.State === 'running') { setTimeout(poll, 2000); return; }
+            if (j.State !== 'done') { return; }
+            if (j.ExactGroups.length === 0) { $('results').innerHTML = '<p>No exact duplicates found.</p>'; return; }
+            $('results').innerHTML = j.ExactGroups.map(function (g, i) {
               return '<h4>Group ' + (i + 1) + '</h4>' + g.map(function (f) {
-                return '<div>' + gb(f.sizeBytes) + '  ' + f.path + '</div>';
+                return '<div>' + gb(f.SizeBytes) + '  ' + f.Path + '</div>';
               }).join('');
             }).join('');
-          });
+          }).catch(showError);
         }
 
         page.addEventListener('pageshow', function () {
           ApiClient.getPluginConfiguration(pluginId).then(function (config) {
             $('SimilarityThreshold').value = config.SimilarityThreshold;
             $('IncludeSimilarTitles').checked = config.IncludeSimilarTitles;
-          });
+          }).catch(showError);
           loadStats();
         });
 
@@ -89,11 +95,12 @@
             config.SimilarityThreshold = parseFloat($('SimilarityThreshold').value);
             config.IncludeSimilarTitles = $('IncludeSimilarTitles').checked;
             return ApiClient.updatePluginConfiguration(pluginId, config);
-          }).then(Dashboard.processPluginConfigurationUpdateResult);
+          }).then(Dashboard.processPluginConfigurationUpdateResult).catch(showError);
         });
 
         $('startScan').addEventListener('click', function () {
-          ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('DuplicateFinder/Start') }).then(poll);
+          ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('DuplicateFinder/Start') })
+            .then(poll).catch(showError);
         });
       })();
     </script>
