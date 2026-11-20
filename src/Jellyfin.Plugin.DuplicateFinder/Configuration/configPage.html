@@ -35,7 +35,7 @@
         </form>
 
         <h2>Detection</h2>
-        <p style="opacity:.8">Read-only. Nothing is deleted in this version. The scan does not read file contents; use <b>Verify identical</b> on a group to check its hash.</p>
+        <p style="opacity:.8">Read-only. Nothing is deleted in this version. The scan does not read file contents; use <b>Check hash</b> on a group to check its hash.</p>
         <div id="error" style="color:#ff8a80;margin:0.5em 0;"></div>
         <div id="scope" style="font-size:1.1em;margin:0.5em 0;"></div>
         <div id="cards" style="display:flex;gap:1.5em;flex-wrap:wrap;margin:1em 0;"></div>
@@ -124,7 +124,7 @@
             return '<button type="button" disabled style="' + btnVerifying + '">Verifying hash...</button>';
           }
           var note = g.VerifyState === 'failed' ? '<span style="color:#ff8a80;margin-left:10px;">Hash check failed: ' + esc(g.VerifyError) + '</span>' : '';
-          return '<button type="button" data-verify="' + esc(g.Id) + '" style="' + btnVerify + '">Verify identical (hash)</button>' + note;
+          return '<button type="button" data-verify="' + esc(g.Id) + '" style="' + btnVerify + '">Check hash</button>' + note;
         };
 
         function renderGroups(j) {
