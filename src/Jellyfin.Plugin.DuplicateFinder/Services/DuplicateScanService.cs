@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Jellyfin.Data.Enums;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.DuplicateFinder.Model;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -14,6 +15,9 @@ namespace Jellyfin.Plugin.DuplicateFinder.Services;
 
 public class DuplicateScanService
 {
+    private static readonly Regex DubRe = new(@"dub(bed)?|farsi|persian", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex HardSubRe = new(@"hard\s?t?sub", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private readonly ILibraryManager _library;
     private readonly object _gate = new();
 
@@ -48,7 +52,7 @@ public class DuplicateScanService
             }
 
             stats.Eligible++;
-            if (!string.IsNullOrEmpty(m.GetProviderId(MetadataProvider.Tmdb))) stats.WithTmdb++;
+            if (!string.IsNullOrEmpty(TmdbOf(m))) stats.WithTmdb++;
             else stats.WithoutTmdb++;
             if (Classifier.IsMultiPart(m)) stats.MultiPart++;
         }
@@ -75,27 +79,132 @@ public class DuplicateScanService
     {
         try
         {
+            var prefer = Plugin.Instance?.Configuration.PreferDubbed ?? true;
             var eligible = AllMovies().Where(m => Classifier.SkipReason(m) is null).ToList();
+            var groups = new List<VersionGroup>();
 
-            var exact = eligible
-                .Where(m => !string.IsNullOrEmpty(m.GetProviderId(MetadataProvider.Tmdb)))
-                .GroupBy(m => m.GetProviderId(MetadataProvider.Tmdb))
-                .Where(g => g.Count() > 1)
-                .Select(g => g.Select(m => new FileEntry(m.Name, m.ProductionYear, m.Path, SizeOf(m.Path))).ToList())
-                .ToList();
+            // 1. Same TMDb ID, split by part number so Part1 and Part2 stay separate.
+            var byTmdb = eligible
+                .Where(m => !string.IsNullOrEmpty(TmdbOf(m)))
+                .GroupBy(m => TmdbOf(m) + "|part" + Classifier.PartNumber(m))
+                .Where(g => g.Count() > 1);
+
+            foreach (var g in byTmdb)
+            {
+                groups.Add(BuildGroup(g.ToList(), "high", prefer));
+            }
+
+            // 2. No TMDb ID: same normalized title, year and part. Lower confidence.
+            var byTitle = eligible
+                .Where(m => string.IsNullOrEmpty(TmdbOf(m)) && m.ProductionYear.HasValue)
+                .GroupBy(m => NormalizeTitle(m.Name) + "|" + m.ProductionYear + "|part" + Classifier.PartNumber(m))
+                .Where(g => g.Count() > 1);
+
+            foreach (var g in byTitle)
+            {
+                groups.Add(BuildGroup(g.ToList(), "low", prefer));
+            }
 
             Job = new ScanJob
             {
                 State = "done",
                 Started = Job.Started,
                 Finished = DateTime.UtcNow,
-                ExactGroups = exact
+                Groups = groups.OrderBy(g => g.Title).ToList()
             };
         }
         catch (Exception ex)
         {
             Job = new ScanJob { State = "failed", Error = ex.Message };
         }
+    }
+
+    private static VersionGroup BuildGroup(List<BaseItem> items, string confidence, bool prefer)
+    {
+        var first = items[0];
+        var versions = items.Select(m => ToVersion(m, prefer)).ToList();
+        foreach (var v in versions)
+        {
+            Scoring.Apply(v, prefer);
+        }
+
+        versions = versions.OrderByDescending(v => v.Score).ThenByDescending(v => v.SizeBytes).ToList();
+
+        var best = versions[0];
+        best.Recommendation = "keep";
+        foreach (var v in versions.Skip(1))
+        {
+            // Close scores are not decisive, so ask the user instead of recommending removal.
+            v.Recommendation = best.Score - v.Score >= 5 ? "remove" : "review";
+        }
+
+        var sameSize = versions.Select(v => v.SizeBytes).Distinct().Count() == 1;
+
+        return new VersionGroup
+        {
+            Title = first.Name,
+            Year = first.ProductionYear,
+            Kind = sameSize ? "same-size" : "version",
+            Confidence = confidence,
+            Versions = versions
+        };
+    }
+
+    private static MediaVersion ToVersion(BaseItem m, bool prefer)
+    {
+        var path = m.Path ?? string.Empty;
+        var name = Path.GetFileName(path);
+        var streams = m.GetMediaStreams();
+        var video = streams.FirstOrDefault(s => s.Type == MediaStreamType.Video);
+        var audio = streams.Where(s => s.Type == MediaStreamType.Audio).ToList();
+        var subs = streams.Where(s => s.Type == MediaStreamType.Subtitle).ToList();
+
+        // Two or more distinct audio languages also counts as dubbed.
+        var audioLanguages = audio.Select(a => a.Language ?? string.Empty)
+            .Where(l => l.Length > 0)
+            .Distinct()
+            .Count();
+
+        return new MediaVersion
+        {
+            Path = path,
+            SizeBytes = SizeOf(path),
+            Container = Path.GetExtension(path).TrimStart('.').ToLowerInvariant(),
+            VideoCodec = video?.Codec ?? string.Empty,
+            Height = video?.Height ?? 0,
+            Source = DetectSource(name),
+            IsDubbed = DubRe.IsMatch(name) || audioLanguages >= 2,
+            HasHardSub = HardSubRe.IsMatch(name),
+            AudioTracks = audio.Count,
+            SubtitleTracks = subs.Count
+        };
+    }
+
+    private static string DetectSource(string name)
+    {
+        var n = name.ToLowerInvariant();
+        if (n.Contains("remux")) return "Remux";
+        if (n.Contains("bluray") || n.Contains("blu-ray") || n.Contains("brrip") || n.Contains("bdrip")) return "BluRay";
+        if (n.Contains("web-dl") || n.Contains("webdl") || n.Contains("web.dl")) return "WEB-DL";
+        if (n.Contains("webrip") || n.Contains("web-rip")) return "WEBRip";
+        if (n.Contains("hdtv")) return "HDTV";
+        if (n.Contains("dvdrip")) return "DVDRip";
+        return string.Empty;
+    }
+
+    private static string TmdbOf(BaseItem m) => m.GetProviderId(MetadataProvider.Tmdb) ?? string.Empty;
+
+    private static string NormalizeTitle(string? s)
+    {
+        var cleaned = new string((s ?? string.Empty).ToLowerInvariant()
+            .Select(c => char.IsLetterOrDigit(c) ? c : ' ').ToArray());
+        var words = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+        while (words.Count > 0 && (words[0] == "the" || words[0] == "a" || words[0] == "an"))
+        {
+            words.RemoveAt(0);
+        }
+
+        return string.Join(' ', words);
     }
 
     private static long SizeOf(string? path) =>

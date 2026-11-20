@@ -9,4 +9,7 @@ public class PluginConfiguration : BasePluginConfiguration
 
     // Whether to report similar (not exact) titles in the results.
     public bool IncludeSimilarTitles { get; set; } = true;
+
+    // Prefer dubbed versions. The non-dubbed copy is then a removal candidate.
+    public bool PreferDubbed { get; set; } = true;
 }

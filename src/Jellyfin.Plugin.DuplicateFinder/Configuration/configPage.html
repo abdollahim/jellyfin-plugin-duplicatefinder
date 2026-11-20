@@ -21,6 +21,12 @@
               <span>Report similar titles as well as exact duplicates</span>
             </label>
           </div>
+          <div class="checkboxContainer checkboxContainer-withDescription">
+            <label class="emby-checkbox-label">
+              <input is="emby-checkbox" type="checkbox" id="PreferDubbed" />
+              <span>Prefer dubbed versions (the non-dubbed copy becomes a removal candidate)</span>
+            </label>
+          </div>
           <div>
             <button is="emby-button" type="submit" class="raised button-submit block emby-button">
               <span>Save settings</span>
@@ -29,6 +35,7 @@
         </form>
 
         <h2>Detection</h2>
+        <p style="opacity:.8">Read-only. Nothing is deleted in this version.</p>
         <div id="error" style="color:#ff8a80;margin:0.5em 0;"></div>
         <div id="scope" style="font-size:1.1em;margin:0.5em 0;"></div>
         <div id="cards" style="display:flex;gap:1.5em;flex-wrap:wrap;margin:1em 0;"></div>
@@ -36,15 +43,19 @@
         <ul id="skipped"></ul>
         <p><button is="emby-button" id="startScan" type="button" class="raised button-submit block emby-button"><span>Start detection</span></button></p>
         <div id="status" style="margin:0.5em 0;"></div>
+        <div id="summary" style="margin:0.5em 0;"></div>
         <div id="results"></div>
       </div>
     </div>
     <script type="text/javascript">
       (function () {
-        // Jellyfin's API returns PascalCase property names (Eligible, State, ExactGroups).
+        // Jellyfin's API returns PascalCase property names.
         var pluginId = 'bd622318-4e30-4155-9f90-f0cbfeeedff2';
         var page = document.querySelector('#DuplicateFinderConfigPage');
         var $ = function (id) { return document.getElementById(id); };
+        var esc = function (s) {
+          return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        };
         var card = function (label, value) {
           return '<div><div style="opacity:.7">' + label + '</div><div style="font-size:1.6em">' + value + '</div></div>';
         };
@@ -52,6 +63,60 @@
         var showError = function (err) {
           $('error').textContent = 'Error: ' + (err && err.message ? err.message : err);
         };
+
+        var mark = function (r) {
+          if (r === 'keep') return '<span title="Keep" style="color:#66bb6a;font-size:1.4em;">&#10004;</span>';
+          if (r === 'remove') return '<span title="Remove candidate" style="color:#ef5350;font-size:1.4em;">&#10006;</span>';
+          return '<span title="Review" style="color:#ffca28;font-size:1.4em;">?</span>';
+        };
+
+        var cell = 'style="padding:6px 8px;border-bottom:1px solid #333;vertical-align:top;"';
+
+        function renderGroups(j) {
+          var groups = j.Groups;
+          var same = groups.filter(function (g) { return g.Kind === 'same-size'; }).length;
+          var low = groups.filter(function (g) { return g.Confidence === 'low'; }).length;
+          $('summary').innerHTML = '<p><b>' + groups.length + '</b> groups found: '
+            + (groups.length - same) + ' different versions, ' + same + ' same size (hash check later), '
+            + low + ' matched by title only.</p>'
+            + '<p style="opacity:.7">&#10004; keep (recommended) &nbsp; &#10006; remove candidate &nbsp; ? review (scores too close to decide)</p>';
+
+          if (groups.length === 0) {
+            $('results').innerHTML = '<p>No duplicates found.</p>';
+            return;
+          }
+
+          $('results').innerHTML = groups.map(function (g) {
+            var kind = g.Kind === 'same-size' ? 'Same size (possible copy)' : 'Different versions';
+            var conf = g.Confidence === 'low' ? 'Matched by title and year (no TMDb ID)' : 'Matched by TMDb ID';
+            var rows = g.Versions.map(function (v) {
+              var reasons = v.Reasons.join('; ');
+              return '<tr>'
+                + '<td ' + cell + ' style="text-align:center;">' + mark(v.Recommendation) + '</td>'
+                + '<td ' + cell + ' style="word-break:break-all;max-width:420px;">' + esc(v.Path) + '</td>'
+                + '<td ' + cell + '>' + gb(v.SizeBytes) + '</td>'
+                + '<td ' + cell + '>' + (v.Height ? v.Height + 'p' : '-') + '</td>'
+                + '<td ' + cell + '>' + esc(v.VideoCodec || '-') + '</td>'
+                + '<td ' + cell + '>' + esc(v.Source || '-') + '</td>'
+                + '<td ' + cell + '>' + (v.IsDubbed ? 'Yes' : 'No') + '</td>'
+                + '<td ' + cell + '>' + (v.HasHardSub ? 'Hard' : 'Soft') + ' (' + v.SubtitleTracks + ')</td>'
+                + '<td ' + cell + ' title="' + esc(reasons) + '">' + v.Score + '</td>'
+                + '<td ' + cell + '><button type="button" disabled title="Deletion comes in a later version">Delete (later)</button></td>'
+                + '</tr>';
+            }).join('');
+
+            return '<div style="margin:1.5em 0;">'
+              + '<h3 style="margin-bottom:0.2em;">' + esc(g.Title) + (g.Year ? ' (' + g.Year + ')' : '') + '</h3>'
+              + '<p style="opacity:.7;margin-top:0;">' + kind + ' &middot; ' + conf + '</p>'
+              + '<div style="overflow-x:auto;"><table style="border-collapse:collapse;width:100%;font-size:0.95em;">'
+              + '<thead><tr>'
+              + '<th ' + cell + '>Keep</th><th ' + cell + '>File</th><th ' + cell + '>Size</th>'
+              + '<th ' + cell + '>Resolution</th><th ' + cell + '>Codec</th><th ' + cell + '>Source</th>'
+              + '<th ' + cell + '>Dubbed</th><th ' + cell + '>Subtitles</th><th ' + cell + '>Score</th>'
+              + '<th ' + cell + '>Action</th>'
+              + '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+          }).join('');
+        }
 
         function loadStats() {
           return ApiClient.getJSON(ApiClient.getUrl('DuplicateFinder/Stats')).then(function (s) {
@@ -62,7 +127,7 @@
               + card('Checked by title and year', s.WithoutTmdb)
               + card('Multi-part (kept separate)', s.MultiPart);
             var skipped = Object.keys(s.Skipped).map(function (r) { return '<li>' + r + ': ' + s.Skipped[r] + '</li>'; });
-            var samples = s.SkippedSamples.map(function (p) { return '<li style="opacity:.6">' + p + '</li>'; });
+            var samples = s.SkippedSamples.map(function (p) { return '<li style="opacity:.6">' + esc(p) + '</li>'; });
             $('skipped').innerHTML = skipped.concat(samples).join('');
           }).catch(showError);
         }
@@ -71,13 +136,7 @@
           return ApiClient.getJSON(ApiClient.getUrl('DuplicateFinder/Status')).then(function (j) {
             $('status').textContent = 'Status: ' + j.State + (j.Error ? ' - ' + j.Error : '');
             if (j.State === 'running') { setTimeout(poll, 2000); return; }
-            if (j.State !== 'done') { return; }
-            if (j.ExactGroups.length === 0) { $('results').innerHTML = '<p>No exact duplicates found.</p>'; return; }
-            $('results').innerHTML = j.ExactGroups.map(function (g, i) {
-              return '<h4>Group ' + (i + 1) + '</h4>' + g.map(function (f) {
-                return '<div>' + gb(f.SizeBytes) + '  ' + f.Path + '</div>';
-              }).join('');
-            }).join('');
+            if (j.State === 'done') { renderGroups(j); }
           }).catch(showError);
         }
 
@@ -85,6 +144,7 @@
           ApiClient.getPluginConfiguration(pluginId).then(function (config) {
             $('SimilarityThreshold').value = config.SimilarityThreshold;
             $('IncludeSimilarTitles').checked = config.IncludeSimilarTitles;
+            $('PreferDubbed').checked = config.PreferDubbed;
           }).catch(showError);
           loadStats();
         });
@@ -94,6 +154,7 @@
           ApiClient.getPluginConfiguration(pluginId).then(function (config) {
             config.SimilarityThreshold = parseFloat($('SimilarityThreshold').value);
             config.IncludeSimilarTitles = $('IncludeSimilarTitles').checked;
+            config.PreferDubbed = $('PreferDubbed').checked;
             return ApiClient.updatePluginConfiguration(pluginId, config);
           }).then(Dashboard.processPluginConfigurationUpdateResult).catch(showError);
         });

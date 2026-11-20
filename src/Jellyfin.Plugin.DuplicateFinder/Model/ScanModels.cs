@@ -14,7 +14,34 @@ public class ScanStats
     public List<string> SkippedSamples { get; set; } = new();
 }
 
-public record FileEntry(string Name, int? Year, string? Path, long SizeBytes);
+public class MediaVersion
+{
+    public string Path { get; set; } = "";
+    public long SizeBytes { get; set; }
+    public string Container { get; set; } = "";
+    public string VideoCodec { get; set; } = "";
+    public int Height { get; set; }
+    public string Source { get; set; } = "";
+    public bool IsDubbed { get; set; }
+    public bool HasHardSub { get; set; }
+    public int AudioTracks { get; set; }
+    public int SubtitleTracks { get; set; }
+    public int Score { get; set; }
+    // keep | remove | review
+    public string Recommendation { get; set; } = "review";
+    public List<string> Reasons { get; set; } = new();
+}
+
+public class VersionGroup
+{
+    public string Title { get; set; } = "";
+    public int? Year { get; set; }
+    // version | same-size
+    public string Kind { get; set; } = "version";
+    // high (TMDb ID) | low (title and year only)
+    public string Confidence { get; set; } = "high";
+    public List<MediaVersion> Versions { get; set; } = new();
+}
 
 public class ScanJob
 {
@@ -22,5 +49,5 @@ public class ScanJob
     public DateTime? Started { get; set; }
     public DateTime? Finished { get; set; }
     public string? Error { get; set; }
-    public List<List<FileEntry>> ExactGroups { get; set; } = new();
+    public List<VersionGroup> Groups { get; set; } = new();
 }
