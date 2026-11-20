@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Duplicate Finder</title>
+</head>
+<body>
+  <div id="DuplicateFinderConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
+       data-require="emby-input,emby-button,emby-checkbox">
+    <div data-role="content">
+      <div class="content-primary">
+        <h2>Settings</h2>
+        <form id="DuplicateFinderConfigForm">
+          <div class="inputContainer">
+            <label class="inputLabel inputLabelUnfocused" for="SimilarityThreshold">Title similarity threshold (0-1)</label>
+            <input is="emby-input" type="number" id="SimilarityThreshold" min="0" max="1" step="0.01" required />
+          </div>
+          <div class="checkboxContainer checkboxContainer-withDescription">
+            <label class="emby-checkbox-label">
+              <input is="emby-checkbox" type="checkbox" id="IncludeSimilarTitles" />
+              <span>Report similar titles as well as exact duplicates</span>
+            </label>
+          </div>
+          <div>
+            <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+              <span>Save settings</span>
+            </button>
+          </div>
+        </form>
+
+        <h2>Detection</h2>
+        <div id="scope" style="font-size:1.1em;margin:0.5em 0;"></div>
+        <div id="cards" style="display:flex;gap:1.5em;flex-wrap:wrap;margin:1em 0;"></div>
+        <h3>Skipped</h3>
+        <ul id="skipped"></ul>
+        <p><button is="emby-button" id="startScan" type="button" class="raised button-submit block emby-button"><span>Start detection</span></button></p>
+        <div id="status" style="margin:0.5em 0;"></div>
+        <div id="results"></div>
+      </div>
+    </div>
+    <script type="text/javascript">
+      (function () {
+        var pluginId = 'bd622318-4e30-4155-9f90-f0cbfeeedff2';
+        var page = document.querySelector('#DuplicateFinderConfigPage');
+        var $ = function (id) { return document.getElementById(id); };
+        var card = function (label, value) {
+          return '<div><div style="opacity:.7">' + label + '</div><div style="font-size:1.6em">' + value + '</div></div>';
+        };
+        var gb = function (bytes) { return (bytes / 1073741824).toFixed(2) + ' GB'; };
+
+        function loadStats() {
+          ApiClient.getJSON(ApiClient.getUrl('DuplicateFinder/Stats')).then(function (s) {
+            $('scope').textContent = 'Detection will run on ' + s.eligible.toLocaleString() + ' movie files.';
+            $('cards').innerHTML = card('Total movies', s.totalMovies)
+              + card('Checked by TMDb ID', s.withTmdb)
+              + card('Checked by title and year', s.withoutTmdb)
+              + card('Multi-part (kept separate)', s.multiPart);
+            var skipped = Object.keys(s.skipped).map(function (r) { return '<li>' + r + ': ' + s.skipped[r] + '</li>'; });
+            var samples = s.skippedSamples.map(function (p) { return '<li style="opacity:.6">' + p + '</li>'; });
+            $('skipped').innerHTML = skipped.concat(samples).join('');
+          });
+        }
+
+        function poll() {
+          ApiClient.getJSON(ApiClient.getUrl('DuplicateFinder/Status')).then(function (j) {
+            $('status').textContent = 'Status: ' + j.state + (j.error ? ' - ' + j.error : '');
+            if (j.state === 'running') { setTimeout(poll, 2000); return; }
+            if (j.state !== 'done') { return; }
+            if (j.exactGroups.length === 0) { $('results').innerHTML = '<p>No exact duplicates found.</p>'; return; }
+            $('results').innerHTML = j.exactGroups.map(function (g, i) {
+              return '<h4>Group ' + (i + 1) + '</h4>' + g.map(function (f) {
+                return '<div>' + gb(f.sizeBytes) + '  ' + f.path + '</div>';
+              }).join('');
+            }).join('');
+          });
+        }
+
+        page.addEventListener('pageshow', function () {
+          ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+            $('SimilarityThreshold').value = config.SimilarityThreshold;
+            $('IncludeSimilarTitles').checked = config.IncludeSimilarTitles;
+          });
+          loadStats();
+        });
+
+        $('DuplicateFinderConfigForm').addEventListener('submit', function (e) {
+          e.preventDefault();
+          ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+            config.SimilarityThreshold = parseFloat($('SimilarityThreshold').value);
+            config.IncludeSimilarTitles = $('IncludeSimilarTitles').checked;
+            return ApiClient.updatePluginConfiguration(pluginId, config);
+          }).then(Dashboard.processPluginConfigurationUpdateResult);
+        });
+
+        $('startScan').addEventListener('click', function () {
+          ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('DuplicateFinder/Start') }).then(poll);
+        });
+      })();
+    </script>
+  </div>
+</body>
+</html>
