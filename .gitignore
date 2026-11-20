@@ -2,3 +2,7 @@ bin/
 obj/
 *.user
 .vs/
+
+# Release artifacts
+release/
+Jellyfin.Plugin.DuplicateFinder_*.zip
