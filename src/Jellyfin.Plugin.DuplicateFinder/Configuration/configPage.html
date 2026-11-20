@@ -8,7 +8,7 @@
   <div id="DuplicateFinderConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
        data-require="emby-input,emby-button,emby-checkbox">
     <div data-role="content">
-      <div class="content-primary">
+      <div class="content-primary" style="width:100%;max-width:none;">
         <h2>Settings</h2>
         <form id="DuplicateFinderConfigForm">
           <div class="inputContainer">
@@ -44,7 +44,7 @@
         <p><button is="emby-button" id="startScan" type="button" class="raised button-submit block emby-button"><span>Start detection</span></button></p>
         <div id="status" style="margin:0.5em 0;"></div>
         <div id="summary" style="margin:0.5em 0;"></div>
-        <div id="results"></div>
+        <div id="results" style="width:100%;"></div>
       </div>
     </div>
     <script type="text/javascript">
@@ -70,7 +70,21 @@
           return '<span title="Review" style="color:#ffca28;font-size:1.4em;">?</span>';
         };
 
-        var cell = 'style="padding:6px 8px;border-bottom:1px solid #333;vertical-align:top;"';
+        // One place for cell styling: values centered vertically, file names left aligned.
+        var baseStyle = 'padding:8px 12px;border-bottom:1px solid #333;vertical-align:middle;';
+        var td = function (content, opts) {
+          opts = opts || {};
+          var style = baseStyle
+            + 'text-align:' + (opts.left ? 'left' : 'center') + ';'
+            + (opts.wrap ? 'white-space:normal;word-break:break-all;' : 'white-space:nowrap;')
+            + (opts.title ? '' : '');
+          return '<td style="' + style + '"' + (opts.title ? ' title="' + esc(opts.title) + '"' : '') + '>' + content + '</td>';
+        };
+        var th = function (label, opts) {
+          opts = opts || {};
+          return '<th style="' + baseStyle + 'font-weight:600;white-space:nowrap;text-align:' + (opts.left ? 'left' : 'center') + ';"'
+            + (opts.title ? ' title="' + esc(opts.title) + '"' : '') + '>' + label + '</th>';
+        };
 
         function renderGroups(j) {
           var groups = j.Groups;
@@ -79,7 +93,8 @@
           $('summary').innerHTML = '<p><b>' + groups.length + '</b> groups found: '
             + (groups.length - same) + ' different versions, ' + same + ' same size (hash check later), '
             + low + ' matched by title only.</p>'
-            + '<p style="opacity:.7">&#10004; keep (recommended) &nbsp; &#10006; remove candidate &nbsp; ? review (scores too close to decide)</p>';
+            + '<p style="opacity:.7">&#10004; keep (recommended) &nbsp; &#10006; remove candidate &nbsp; ? review (scores too close to decide). '
+            + 'Keep score: higher means better to keep. Hover a score to see how it is made.</p>';
 
           if (groups.length === 0) {
             $('results').innerHTML = '<p>No duplicates found.</p>';
@@ -90,30 +105,29 @@
             var kind = g.Kind === 'same-size' ? 'Same size (possible copy)' : 'Different versions';
             var conf = g.Confidence === 'low' ? 'Matched by title and year (no TMDb ID)' : 'Matched by TMDb ID';
             var rows = g.Versions.map(function (v) {
-              var reasons = v.Reasons.join('; ');
               return '<tr>'
-                + '<td ' + cell + ' style="text-align:center;">' + mark(v.Recommendation) + '</td>'
-                + '<td ' + cell + ' style="word-break:break-all;max-width:420px;">' + esc(v.Path) + '</td>'
-                + '<td ' + cell + '>' + gb(v.SizeBytes) + '</td>'
-                + '<td ' + cell + '>' + (v.Height ? v.Height + 'p' : '-') + '</td>'
-                + '<td ' + cell + '>' + esc(v.VideoCodec || '-') + '</td>'
-                + '<td ' + cell + '>' + esc(v.Source || '-') + '</td>'
-                + '<td ' + cell + '>' + (v.IsDubbed ? 'Yes' : 'No') + '</td>'
-                + '<td ' + cell + '>' + (v.HasHardSub ? 'Hard' : 'Soft') + ' (' + v.SubtitleTracks + ')</td>'
-                + '<td ' + cell + ' title="' + esc(reasons) + '">' + v.Score + '</td>'
-                + '<td ' + cell + '><button type="button" disabled title="Deletion comes in a later version">Delete (later)</button></td>'
+                + td(mark(v.Recommendation))
+                + td(esc(v.Path), { left: true, wrap: true })
+                + td(gb(v.SizeBytes))
+                + td(v.Height ? v.Height + 'p' : '-')
+                + td(esc(v.VideoCodec || '-'))
+                + td(esc(v.Source || '-'))
+                + td(v.IsDubbed ? 'Yes' : 'No')
+                + td((v.HasHardSub ? 'Hard' : 'Soft') + ' (' + v.SubtitleTracks + ')')
+                + td('<b>' + v.Score + '</b>', { title: v.Reasons.join('; ') })
+                + td('<button type="button" disabled title="Deletion comes in a later version" style="white-space:nowrap;">Delete (later)</button>')
                 + '</tr>';
             }).join('');
 
-            return '<div style="margin:1.5em 0;">'
+            return '<div style="margin:1.5em 0;width:100%;">'
               + '<h3 style="margin-bottom:0.2em;">' + esc(g.Title) + (g.Year ? ' (' + g.Year + ')' : '') + '</h3>'
               + '<p style="opacity:.7;margin-top:0;">' + kind + ' &middot; ' + conf + '</p>'
-              + '<div style="overflow-x:auto;"><table style="border-collapse:collapse;width:100%;font-size:0.95em;">'
+              + '<div style="overflow-x:auto;width:100%;">'
+              + '<table style="border-collapse:collapse;width:100%;font-size:0.95em;">'
               + '<thead><tr>'
-              + '<th ' + cell + '>Keep</th><th ' + cell + '>File</th><th ' + cell + '>Size</th>'
-              + '<th ' + cell + '>Resolution</th><th ' + cell + '>Codec</th><th ' + cell + '>Source</th>'
-              + '<th ' + cell + '>Dubbed</th><th ' + cell + '>Subtitles</th><th ' + cell + '>Score</th>'
-              + '<th ' + cell + '>Action</th>'
+              + th('Keep') + th('File', { left: true }) + th('Size') + th('Resolution') + th('Codec')
+              + th('Source') + th('Dubbed') + th('Subtitles')
+              + th('Keep score', { title: 'Higher means better to keep' }) + th('Action')
               + '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
           }).join('');
         }
