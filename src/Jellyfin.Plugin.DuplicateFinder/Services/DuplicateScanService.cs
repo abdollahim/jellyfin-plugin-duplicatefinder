@@ -167,6 +167,7 @@ public class DuplicateScanService
 
         return new MediaVersion
         {
+            ItemId = m.Id.ToString("N"),
             Path = path,
             SizeBytes = SizeOf(path),
             Container = Path.GetExtension(path).TrimStart('.').ToLowerInvariant(),

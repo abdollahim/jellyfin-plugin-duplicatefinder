@@ -16,6 +16,7 @@ public class ScanStats
 
 public class MediaVersion
 {
+    public string ItemId { get; set; } = "";
     public string Path { get; set; } = "";
     public long SizeBytes { get; set; }
     public string Container { get; set; } = "";

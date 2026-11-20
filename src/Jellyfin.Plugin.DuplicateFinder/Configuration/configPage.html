@@ -8,7 +8,7 @@
   <div id="DuplicateFinderConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
        data-require="emby-input,emby-button,emby-checkbox">
     <div data-role="content">
-      <div class="content-primary" style="width:100%;max-width:none;">
+      <div class="content-primary" style="width:100%;max-width:none;box-sizing:border-box;padding-right:24px;">
         <h2>Settings</h2>
         <form id="DuplicateFinderConfigForm">
           <div class="inputContainer">
@@ -44,7 +44,7 @@
         <p><button is="emby-button" id="startScan" type="button" class="raised button-submit block emby-button"><span>Start detection</span></button></p>
         <div id="status" style="margin:0.5em 0;"></div>
         <div id="summary" style="margin:0.5em 0;"></div>
-        <div id="results" style="width:100%;"></div>
+        <div id="results" style="width:100%;box-sizing:border-box;padding-right:8px;"></div>
       </div>
     </div>
     <script type="text/javascript">
@@ -70,14 +70,18 @@
           return '<span title="Review" style="color:#ffca28;font-size:1.4em;">?</span>';
         };
 
-        // One place for cell styling: values centered vertically, file names left aligned.
+        // Link to the movie's details page in the Jellyfin web UI, opened in a new tab.
+        var movieUrl = function (itemId) {
+          var sid = (ApiClient.serverId && ApiClient.serverId()) || '';
+          return ApiClient.getUrl('web/#/details?id=' + itemId + (sid ? '&serverId=' + sid : ''));
+        };
+
         var baseStyle = 'padding:8px 12px;border-bottom:1px solid #333;vertical-align:middle;';
         var td = function (content, opts) {
           opts = opts || {};
           var style = baseStyle
             + 'text-align:' + (opts.left ? 'left' : 'center') + ';'
-            + (opts.wrap ? 'white-space:normal;word-break:break-all;' : 'white-space:nowrap;')
-            + (opts.title ? '' : '');
+            + (opts.wrap ? 'white-space:normal;word-break:break-all;' : 'white-space:nowrap;');
           return '<td style="' + style + '"' + (opts.title ? ' title="' + esc(opts.title) + '"' : '') + '>' + content + '</td>';
         };
         var th = function (label, opts) {
@@ -105,6 +109,11 @@
             var kind = g.Kind === 'same-size' ? 'Same size (possible copy)' : 'Different versions';
             var conf = g.Confidence === 'low' ? 'Matched by title and year (no TMDb ID)' : 'Matched by TMDb ID';
             var rows = g.Versions.map(function (v) {
+              var actions = '<div style="display:flex;flex-direction:column;gap:6px;align-items:center;">'
+                + '<button type="button" disabled title="Deletion comes in a later version" style="white-space:nowrap;">Delete (later)</button>'
+                + '<a class="raised emby-button" target="_blank" rel="noopener" href="' + esc(movieUrl(v.ItemId))
+                + '" style="white-space:nowrap;text-decoration:none;">Open movie</a>'
+                + '</div>';
               return '<tr>'
                 + td(mark(v.Recommendation))
                 + td(esc(v.Path), { left: true, wrap: true })
@@ -115,14 +124,14 @@
                 + td(v.IsDubbed ? 'Yes' : 'No')
                 + td((v.HasHardSub ? 'Hard' : 'Soft') + ' (' + v.SubtitleTracks + ')')
                 + td('<b>' + v.Score + '</b>', { title: v.Reasons.join('; ') })
-                + td('<button type="button" disabled title="Deletion comes in a later version" style="white-space:nowrap;">Delete (later)</button>')
+                + td(actions)
                 + '</tr>';
             }).join('');
 
             return '<div style="margin:1.5em 0;width:100%;">'
               + '<h3 style="margin-bottom:0.2em;">' + esc(g.Title) + (g.Year ? ' (' + g.Year + ')' : '') + '</h3>'
               + '<p style="opacity:.7;margin-top:0;">' + kind + ' &middot; ' + conf + '</p>'
-              + '<div style="overflow-x:auto;width:100%;">'
+              + '<div style="overflow-x:auto;width:100%;box-sizing:border-box;padding-right:12px;">'
               + '<table style="border-collapse:collapse;width:100%;font-size:0.95em;">'
               + '<thead><tr>'
               + th('Keep') + th('File', { left: true }) + th('Size') + th('Resolution') + th('Codec')
