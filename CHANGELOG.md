@@ -6,6 +6,62 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-20
+
+### Added
+- Identical copies: groups whose specs and SHA-256 hash match are marked "Identical".
+  Their rows show `=`, with no keep or remove recommendation. You choose which copy to keep.
+- Same specs with different content are marked "same specs, different content" and sent for review.
+- Hashing runs only for groups whose specs and size already match, to keep scans fast.
+- Colored pills for group type and match confidence, and colored action buttons.
+- README rewritten to describe the current features.
+
+### Changed
+- Results use more of the page width, with matching left and right padding.
+
+## [0.3.2] - 2026-11-20
+
+### Added
+- "Open movie" button under the disabled Delete placeholder. It opens the movie's
+  details page in the Jellyfin web UI in a new tab.
+- Each version now carries its Jellyfin item ID.
+
+### Fixed
+- The last column touched the scrollbar edge. The table area now has right padding.
+
+## [0.3.1] - 2026-11-20
+
+### Changed
+- Score column renamed to "Keep score" (higher means better to keep).
+- Values are vertically centered. File names are left aligned and wrap.
+- Tables use the full page width.
+
+### Fixed
+- Cell alignment attributes were duplicated, so centering did not apply.
+
+## [0.3.0] - 2026-11-20
+
+### Added
+- Results shown as a table per movie: title as the heading, then one row per version
+  with keep / remove / review, file, size, resolution, codec, source, dubbed,
+  subtitles, score, and a disabled "Delete (later)" placeholder.
+- Version scoring from Jellyfin's media info and file names: resolution, source,
+  codec, container, dubbed audio, hardcoded subtitles, and subtitle tracks.
+  Every point is listed in the score tooltip.
+- "Prefer dubbed versions" setting. When on, the non-dubbed copy is a removal candidate.
+- Groups are labeled "different versions" or "same size (possible copy)".
+- Title-and-year matching for movies without a TMDb ID, marked as low confidence.
+
+### Changed
+- Multi-part films are grouped by part number, so Part1 and Part2 are no longer merged.
+- Read-only: nothing is deleted or changed on disk.
+
+## [0.2.2] - 2026-11-20
+
+### Fixed
+- Settings page did not show statistics or status. The page read camelCase
+  property names, but Jellyfin's API returns PascalCase. Errors now appear on the page.
+
 ## [0.2.1] - 2026-11-20
 
 ### Fixed

@@ -5,10 +5,27 @@
   <title>Duplicate Finder</title>
 </head>
 <body>
+  <style>
+    .df-btn { display:inline-block; padding:8px 16px; border-radius:6px; font-weight:600; text-decoration:none;
+              white-space:nowrap; border:none; cursor:pointer; font-size:0.95em; min-width:120px; text-align:center; }
+    .df-btn-open { background:#00a4dc; color:#ffffff; }
+    .df-btn-open:hover { background:#0b8fc2; color:#ffffff; }
+    .df-btn-disabled { background:#2b2b2b; color:#777; border:1px dashed #b71c1c; cursor:not-allowed; }
+    .df-pill { display:inline-block; padding:3px 12px; border-radius:999px; font-size:0.85em; font-weight:600; }
+    .df-pill-identical { background:#1565c0; color:#ffffff; }
+    .df-pill-spec { background:#ef6c00; color:#ffffff; }
+    .df-pill-version { background:#2e7d32; color:#ffffff; }
+    .df-pill-tmdb { background:#37474f; color:#ffffff; }
+    .df-pill-low { background:#6d4c41; color:#ffffff; }
+    .df-group { margin:1.5em 0; width:100%; box-sizing:border-box; }
+    .df-group-card { background:#1b1b1b; border-radius:10px; padding:14px 18px; box-sizing:border-box; }
+    .df-table-wrap { overflow-x:auto; width:100%; box-sizing:border-box; padding-right:8px; margin-top:8px; }
+  </style>
+
   <div id="DuplicateFinderConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
        data-require="emby-input,emby-button,emby-checkbox">
     <div data-role="content">
-      <div class="content-primary" style="width:100%;max-width:none;box-sizing:border-box;padding-right:24px;">
+      <div class="content-primary" style="width:100%;max-width:none;box-sizing:border-box;padding-left:16px;padding-right:12px;">
         <h2>Settings</h2>
         <form id="DuplicateFinderConfigForm">
           <div class="inputContainer">
@@ -44,7 +61,7 @@
         <p><button is="emby-button" id="startScan" type="button" class="raised button-submit block emby-button"><span>Start detection</span></button></p>
         <div id="status" style="margin:0.5em 0;"></div>
         <div id="summary" style="margin:0.5em 0;"></div>
-        <div id="results" style="width:100%;box-sizing:border-box;padding-right:8px;"></div>
+        <div id="results" style="width:100%;box-sizing:border-box;"></div>
       </div>
     </div>
     <script type="text/javascript">
@@ -65,18 +82,18 @@
         };
 
         var mark = function (r) {
-          if (r === 'keep') return '<span title="Keep" style="color:#66bb6a;font-size:1.4em;">&#10004;</span>';
-          if (r === 'remove') return '<span title="Remove candidate" style="color:#ef5350;font-size:1.4em;">&#10006;</span>';
-          return '<span title="Review" style="color:#ffca28;font-size:1.4em;">?</span>';
+          if (r === 'keep') return '<span title="Keep (recommended)" style="color:#66bb6a;font-size:1.4em;font-weight:700;">&#10004;</span>';
+          if (r === 'remove') return '<span title="Remove candidate" style="color:#ef5350;font-size:1.4em;font-weight:700;">&#10006;</span>';
+          if (r === 'equal') return '<span title="Equal: identical copies, you choose" style="color:#42a5f5;font-size:1.4em;font-weight:700;">=</span>';
+          return '<span title="Review: you decide" style="color:#ffca28;font-size:1.4em;font-weight:700;">?</span>';
         };
 
-        // Link to the movie's details page in the Jellyfin web UI, opened in a new tab.
         var movieUrl = function (itemId) {
           var sid = (ApiClient.serverId && ApiClient.serverId()) || '';
           return ApiClient.getUrl('web/#/details?id=' + itemId + (sid ? '&serverId=' + sid : ''));
         };
 
-        var baseStyle = 'padding:8px 12px;border-bottom:1px solid #333;vertical-align:middle;';
+        var baseStyle = 'padding:10px 12px;border-bottom:1px solid #333;vertical-align:middle;';
         var td = function (content, opts) {
           opts = opts || {};
           var style = baseStyle
@@ -90,15 +107,30 @@
             + (opts.title ? ' title="' + esc(opts.title) + '"' : '') + '>' + label + '</th>';
         };
 
+        var kindPill = function (g) {
+          if (g.Kind === 'identical') return '<span class="df-pill df-pill-identical">Identical: same content, you choose which to keep</span>';
+          if (g.Kind === 'same-spec') return '<span class="df-pill df-pill-spec">Same specs, different content: review</span>';
+          return '<span class="df-pill df-pill-version">Different versions</span>';
+        };
+        var confPill = function (g) {
+          return g.Confidence === 'low'
+            ? '<span class="df-pill df-pill-low">Title and year only</span>'
+            : '<span class="df-pill df-pill-tmdb">Matched by TMDb ID</span>';
+        };
+
         function renderGroups(j) {
           var groups = j.Groups;
-          var same = groups.filter(function (g) { return g.Kind === 'same-size'; }).length;
+          var identical = groups.filter(function (g) { return g.Kind === 'identical'; }).length;
+          var spec = groups.filter(function (g) { return g.Kind === 'same-spec'; }).length;
+          var versions = groups.filter(function (g) { return g.Kind === 'version'; }).length;
           var low = groups.filter(function (g) { return g.Confidence === 'low'; }).length;
-          $('summary').innerHTML = '<p><b>' + groups.length + '</b> groups found: '
-            + (groups.length - same) + ' different versions, ' + same + ' same size (hash check later), '
-            + low + ' matched by title only.</p>'
-            + '<p style="opacity:.7">&#10004; keep (recommended) &nbsp; &#10006; remove candidate &nbsp; ? review (scores too close to decide). '
-            + 'Keep score: higher means better to keep. Hover a score to see how it is made.</p>';
+          $('summary').innerHTML = '<p><b>' + groups.length + '</b> groups: '
+            + '<span class="df-pill df-pill-identical">' + identical + ' identical</span> '
+            + '<span class="df-pill df-pill-spec">' + spec + ' same specs, different content</span> '
+            + '<span class="df-pill df-pill-version">' + versions + ' different versions</span> '
+            + '<span class="df-pill df-pill-low">' + low + ' title only</span></p>'
+            + '<p style="opacity:.75">&#10004; keep (recommended) &nbsp; &#10006; remove candidate &nbsp; '
+            + '= identical copies, you choose &nbsp; ? review. Keep score: higher means better to keep. Hover a score for its breakdown.</p>';
 
           if (groups.length === 0) {
             $('results').innerHTML = '<p>No duplicates found.</p>';
@@ -106,13 +138,10 @@
           }
 
           $('results').innerHTML = groups.map(function (g) {
-            var kind = g.Kind === 'same-size' ? 'Same size (possible copy)' : 'Different versions';
-            var conf = g.Confidence === 'low' ? 'Matched by title and year (no TMDb ID)' : 'Matched by TMDb ID';
             var rows = g.Versions.map(function (v) {
-              var actions = '<div style="display:flex;flex-direction:column;gap:6px;align-items:center;">'
-                + '<button type="button" disabled title="Deletion comes in a later version" style="white-space:nowrap;">Delete (later)</button>'
-                + '<a class="raised emby-button" target="_blank" rel="noopener" href="' + esc(movieUrl(v.ItemId))
-                + '" style="white-space:nowrap;text-decoration:none;">Open movie</a>'
+              var actions = '<div style="display:flex;flex-direction:column;gap:8px;align-items:center;">'
+                + '<button type="button" class="df-btn df-btn-disabled" disabled title="Deletion comes in a later version">Delete (later)</button>'
+                + '<a class="df-btn df-btn-open" target="_blank" rel="noopener" href="' + esc(movieUrl(v.ItemId)) + '">Open movie</a>'
                 + '</div>';
               return '<tr>'
                 + td(mark(v.Recommendation))
@@ -128,16 +157,17 @@
                 + '</tr>';
             }).join('');
 
-            return '<div style="margin:1.5em 0;width:100%;">'
-              + '<h3 style="margin-bottom:0.2em;">' + esc(g.Title) + (g.Year ? ' (' + g.Year + ')' : '') + '</h3>'
-              + '<p style="opacity:.7;margin-top:0;">' + kind + ' &middot; ' + conf + '</p>'
-              + '<div style="overflow-x:auto;width:100%;box-sizing:border-box;padding-right:12px;">'
+            return '<div class="df-group"><div class="df-group-card">'
+              + '<h3 style="margin:0 0 4px 0;">' + esc(g.Title) + (g.Year ? ' (' + g.Year + ')' : '') + '</h3>'
+              + '<div style="margin:4px 0 6px 0;">' + kindPill(g) + ' ' + confPill(g) + '</div>'
+              + '<div class="df-table-wrap">'
               + '<table style="border-collapse:collapse;width:100%;font-size:0.95em;">'
               + '<thead><tr>'
               + th('Keep') + th('File', { left: true }) + th('Size') + th('Resolution') + th('Codec')
               + th('Source') + th('Dubbed') + th('Subtitles')
               + th('Keep score', { title: 'Higher means better to keep' }) + th('Action')
-              + '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+              + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+              + '</div></div>';
           }).join('');
         }
 

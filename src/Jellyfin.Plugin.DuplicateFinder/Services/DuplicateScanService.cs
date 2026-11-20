@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
@@ -128,26 +129,89 @@ public class DuplicateScanService
             Scoring.Apply(v, prefer);
         }
 
-        versions = versions.OrderByDescending(v => v.Score).ThenByDescending(v => v.SizeBytes).ToList();
+        var sameSpecs = versions.Select(SpecKey).Distinct().Count() == 1;
+        var sameSize = versions.Select(v => v.SizeBytes).Distinct().Count() == 1;
 
-        var best = versions[0];
-        best.Recommendation = "keep";
-        foreach (var v in versions.Skip(1))
+        // Hash only when specs and size already match. Hashing is slow, so skip the rest.
+        var kind = "version";
+        if (sameSpecs && sameSize)
         {
-            // Close scores are not decisive, so ask the user instead of recommending removal.
-            v.Recommendation = best.Score - v.Score >= 5 ? "remove" : "review";
+            foreach (var v in versions)
+            {
+                v.Sha256 = HashOf(v.Path);
+            }
+
+            var identical = versions[0].Sha256 != string.Empty
+                && versions.Select(v => v.Sha256).Distinct().Count() == 1;
+            kind = identical ? "identical" : "same-spec";
         }
 
-        var sameSize = versions.Select(v => v.SizeBytes).Distinct().Count() == 1;
+        if (kind == "identical")
+        {
+            // Same content: no keep/remove. The user chooses which copy to keep.
+            foreach (var v in versions)
+            {
+                v.Recommendation = "equal";
+            }
+
+            versions = versions.OrderBy(v => v.Path).ToList();
+        }
+        else if (kind == "same-spec")
+        {
+            // Same specs but different content: the user decides.
+            foreach (var v in versions)
+            {
+                v.Recommendation = "review";
+            }
+
+            versions = versions.OrderByDescending(v => v.Score).ThenByDescending(v => v.SizeBytes).ToList();
+        }
+        else
+        {
+            versions = versions.OrderByDescending(v => v.Score).ThenByDescending(v => v.SizeBytes).ToList();
+            var best = versions[0];
+            best.Recommendation = "keep";
+            foreach (var v in versions.Skip(1))
+            {
+                // Close scores are not decisive, so ask the user instead of recommending removal.
+                v.Recommendation = best.Score - v.Score >= 5 ? "remove" : "review";
+            }
+        }
 
         return new VersionGroup
         {
             Title = first.Name,
             Year = first.ProductionYear,
-            Kind = sameSize ? "same-size" : "version",
+            Kind = kind,
             Confidence = confidence,
             Versions = versions
         };
+    }
+
+    // Everything that describes what the user sees. Same key means same specs.
+    private static string SpecKey(MediaVersion v) =>
+        $"{v.Height}|{v.VideoCodec}|{v.Source}|{v.IsDubbed}|{v.HasHardSub}|{v.SubtitleTracks}|{v.AudioTracks}|{v.Container}";
+
+    private static string HashOf(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return string.Empty;
+            }
+
+            using var fs = File.OpenRead(path);
+            return Convert.ToHexString(SHA256.HashData(fs));
+        }
+        catch (IOException)
+        {
+            return string.Empty;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return string.Empty;
+        }
     }
 
     private static MediaVersion ToVersion(BaseItem m, bool prefer)

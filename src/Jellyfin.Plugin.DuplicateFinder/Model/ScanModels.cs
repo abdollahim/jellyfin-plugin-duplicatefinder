@@ -19,6 +19,7 @@ public class MediaVersion
     public string ItemId { get; set; } = "";
     public string Path { get; set; } = "";
     public long SizeBytes { get; set; }
+    public string Sha256 { get; set; } = "";
     public string Container { get; set; } = "";
     public string VideoCodec { get; set; } = "";
     public int Height { get; set; }
@@ -28,7 +29,7 @@ public class MediaVersion
     public int AudioTracks { get; set; }
     public int SubtitleTracks { get; set; }
     public int Score { get; set; }
-    // keep | remove | review
+    // keep | remove | review | equal (identical copies, user chooses)
     public string Recommendation { get; set; } = "review";
     public List<string> Reasons { get; set; } = new();
 }
@@ -37,7 +38,7 @@ public class VersionGroup
 {
     public string Title { get; set; } = "";
     public int? Year { get; set; }
-    // version | same-size
+    // identical (same specs and same SHA-256) | same-spec (same specs, different content) | version
     public string Kind { get; set; } = "version";
     // high (TMDb ID) | low (title and year only)
     public string Confidence { get; set; } = "high";
