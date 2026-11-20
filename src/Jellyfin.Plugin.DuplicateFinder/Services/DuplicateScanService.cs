@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
@@ -21,6 +22,7 @@ public class DuplicateScanService
 
     private readonly ILibraryManager _library;
     private readonly object _gate = new();
+    private readonly Dictionary<string, VersionGroup> _groups = new();
 
     public DuplicateScanService(ILibraryManager library) => _library = library;
 
@@ -70,12 +72,14 @@ public class DuplicateScanService
                 return;
             }
 
+            _groups.Clear();
             Job = new ScanJob { State = "running", Started = DateTime.UtcNow };
         }
 
         Task.Run(Run);
     }
 
+    // Metadata only: no file reads beyond file sizes, so it stays fast.
     private void Run()
     {
         try
@@ -106,17 +110,84 @@ public class DuplicateScanService
                 groups.Add(BuildGroup(g.ToList(), "low", prefer));
             }
 
-            Job = new ScanJob
+            lock (_gate)
             {
-                State = "done",
-                Started = Job.Started,
-                Finished = DateTime.UtcNow,
-                Groups = groups.OrderBy(g => g.Title).ToList()
-            };
+                foreach (var g in groups)
+                {
+                    _groups[g.Id] = g;
+                }
+
+                Job = new ScanJob
+                {
+                    State = "done",
+                    Started = Job.Started,
+                    Finished = DateTime.UtcNow,
+                    Groups = groups.OrderBy(g => g.Title).ToList()
+                };
+            }
         }
         catch (Exception ex)
         {
-            Job = new ScanJob { State = "failed", Error = ex.Message };
+            lock (_gate)
+            {
+                Job = new ScanJob { State = "failed", Error = ex.Message };
+            }
+        }
+    }
+
+    // Starts the hash check for one candidate group, in the background.
+    public bool StartVerify(string groupId)
+    {
+        lock (_gate)
+        {
+            if (!_groups.TryGetValue(groupId, out var group)
+                || group.Kind != "candidate"
+                || group.VerifyState == "running")
+            {
+                return false;
+            }
+
+            group.VerifyState = "running";
+            group.VerifyError = null;
+        }
+
+        Task.Run(() => Verify(groupId));
+        return true;
+    }
+
+    private void Verify(string groupId)
+    {
+        VersionGroup group;
+        lock (_gate)
+        {
+            group = _groups[groupId];
+        }
+
+        try
+        {
+            // Read one file at a time. Reading two large files at once thrashes a hard drive.
+            var hashes = group.Versions.Select(v => HashOf(v.Path)).ToList();
+            var identical = hashes.All(h => h.Length > 0) && hashes.Distinct().Count() == 1;
+
+            lock (_gate)
+            {
+                for (var i = 0; i < group.Versions.Count; i++)
+                {
+                    group.Versions[i].Sha256 = hashes[i];
+                    group.Versions[i].Recommendation = identical ? "equal" : "review";
+                }
+
+                group.Kind = identical ? "identical" : "same-spec";
+                group.VerifyState = "done";
+            }
+        }
+        catch (Exception ex)
+        {
+            lock (_gate)
+            {
+                group.VerifyState = "failed";
+                group.VerifyError = ex.Message;
+            }
         }
     }
 
@@ -132,42 +203,20 @@ public class DuplicateScanService
         var sameSpecs = versions.Select(SpecKey).Distinct().Count() == 1;
         var sameSize = versions.Select(v => v.SizeBytes).Distinct().Count() == 1;
 
-        // Hash only when specs and size already match. Hashing is slow, so skip the rest.
-        var kind = "version";
+        string kind;
         if (sameSpecs && sameSize)
         {
-            foreach (var v in versions)
-            {
-                v.Sha256 = HashOf(v.Path);
-            }
-
-            var identical = versions[0].Sha256 != string.Empty
-                && versions.Select(v => v.Sha256).Distinct().Count() == 1;
-            kind = identical ? "identical" : "same-spec";
-        }
-
-        if (kind == "identical")
-        {
-            // Same content: no keep/remove. The user chooses which copy to keep.
-            foreach (var v in versions)
-            {
-                v.Recommendation = "equal";
-            }
-
+            // Looks identical, but the hash is not checked until the user asks.
+            kind = "candidate";
             versions = versions.OrderBy(v => v.Path).ToList();
-        }
-        else if (kind == "same-spec")
-        {
-            // Same specs but different content: the user decides.
             foreach (var v in versions)
             {
                 v.Recommendation = "review";
             }
-
-            versions = versions.OrderByDescending(v => v.Score).ThenByDescending(v => v.SizeBytes).ToList();
         }
         else
         {
+            kind = "version";
             versions = versions.OrderByDescending(v => v.Score).ThenByDescending(v => v.SizeBytes).ToList();
             var best = versions[0];
             best.Recommendation = "keep";
@@ -180,6 +229,7 @@ public class DuplicateScanService
 
         return new VersionGroup
         {
+            Id = GroupId(versions),
             Title = first.Name,
             Year = first.ProductionYear,
             Kind = kind,
@@ -188,7 +238,13 @@ public class DuplicateScanService
         };
     }
 
-    // Everything that describes what the user sees. Same key means same specs.
+    private static string GroupId(List<MediaVersion> versions)
+    {
+        var key = string.Join(",", versions.Select(v => v.ItemId).OrderBy(x => x, StringComparer.Ordinal));
+        return Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(key))).ToLowerInvariant();
+    }
+
+    // Everything the user sees. Same key means same specs.
     private static string SpecKey(MediaVersion v) =>
         $"{v.Height}|{v.VideoCodec}|{v.Source}|{v.IsDubbed}|{v.HasHardSub}|{v.SubtitleTracks}|{v.AudioTracks}|{v.Container}";
 

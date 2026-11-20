@@ -36,12 +36,17 @@ public class MediaVersion
 
 public class VersionGroup
 {
+    public string Id { get; set; } = "";
     public string Title { get; set; } = "";
     public int? Year { get; set; }
+    // candidate (same specs and size, hash not checked yet)
     // identical (same specs and same SHA-256) | same-spec (same specs, different content) | version
     public string Kind { get; set; } = "version";
     // high (TMDb ID) | low (title and year only)
     public string Confidence { get; set; } = "high";
+    // none | running | done | failed
+    public string VerifyState { get; set; } = "none";
+    public string? VerifyError { get; set; }
     public List<MediaVersion> Versions { get; set; } = new();
 }
 

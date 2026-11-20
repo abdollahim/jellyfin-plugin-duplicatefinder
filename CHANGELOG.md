@@ -6,6 +6,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-11-20
+
+### Added
+- "Verify identical (hash)" button on groups with the same specs and size. The hash is
+  checked only when you click it, and it runs in the background.
+
+### Changed
+- The scan reads metadata only, so it finishes in about a second again. Hashing no longer
+  runs during the scan.
+- Groups with the same specs and size are shown as "not verified" until they are checked.
+- Open movie and Delete (later) use the same button shape. Only the colors differ.
+- Page styling uses inline styles only, so pills and buttons appear as designed.
+
+### Fixed
+- Scans that ran for several minutes because every matching group was hashed during the scan.
+
 ## [0.3.3] - 2026-11-20
 
 ### Added

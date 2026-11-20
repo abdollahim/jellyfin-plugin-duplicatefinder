@@ -13,8 +13,8 @@ A Jellyfin plugin that finds duplicate and similar movies in your library.
   container, dubbed audio, hardcoded subtitles, and subtitle tracks.
   Hover a score to see its breakdown.
 - Recommends a version to keep (✔), a version to remove (✖), or asks you to review (?).
-- Identical copies (same specs and same SHA-256 hash) are marked `=`. You choose which to keep.
-- Same specs with different content are marked for review.
+- Groups with the same specs and size are marked as candidates. Their hash is checked only when you click **Verify identical**.
+  Identical copies (same SHA-256) are marked `=`, and you choose which to keep.
 - Settings: title similarity threshold, similar-title reporting, and a preference for dubbed versions.
 - Each version has an **Open movie** link to its Jellyfin details page.
 
@@ -40,7 +40,7 @@ The DLL is written to `src/Jellyfin.Plugin.DuplicateFinder/bin/Release/net10.0/`
 
 1. Stop Jellyfin.
 2. Create `plugins/DuplicateFinder_<version>/` in your Jellyfin data folder,
-   for example `C:\ProgramData\Jellyfin\Server\plugins\DuplicateFinder_0.3.3.0`.
+   for example `C:\ProgramData\Jellyfin\Server\plugins\DuplicateFinder_0.3.4.0`.
 3. Copy `Jellyfin.Plugin.DuplicateFinder.dll` into that folder.
 4. Start Jellyfin and open **Dashboard → Plugins → Duplicate Finder**.
 
@@ -48,10 +48,11 @@ The DLL is written to `src/Jellyfin.Plugin.DuplicateFinder/bin/Release/net10.0/`
 
 Open **Settings** to adjust the options. The Detection section shows how many movies
 will be checked, which items were skipped (TV episodes, and items with no year and no TMDb ID),
-and a **Start detection** button. Results appear as one table per movie.
+and a **Start detection** button. A scan only reads metadata, so it finishes in about a second.
+Results appear as one table per movie.
 
-Hashing is slow for large files. It only runs for groups whose specs and size already match,
-so a scan can take a few minutes on a large library.
+A hash check reads both files in full. It runs only when you click **Verify identical**
+on a group, one file at a time, so it does not slow down the scan.
 
 ## Versioning
 

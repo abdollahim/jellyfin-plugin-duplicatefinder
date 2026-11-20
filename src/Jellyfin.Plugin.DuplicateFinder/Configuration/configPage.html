@@ -5,23 +5,6 @@
   <title>Duplicate Finder</title>
 </head>
 <body>
-  <style>
-    .df-btn { display:inline-block; padding:8px 16px; border-radius:6px; font-weight:600; text-decoration:none;
-              white-space:nowrap; border:none; cursor:pointer; font-size:0.95em; min-width:120px; text-align:center; }
-    .df-btn-open { background:#00a4dc; color:#ffffff; }
-    .df-btn-open:hover { background:#0b8fc2; color:#ffffff; }
-    .df-btn-disabled { background:#2b2b2b; color:#777; border:1px dashed #b71c1c; cursor:not-allowed; }
-    .df-pill { display:inline-block; padding:3px 12px; border-radius:999px; font-size:0.85em; font-weight:600; }
-    .df-pill-identical { background:#1565c0; color:#ffffff; }
-    .df-pill-spec { background:#ef6c00; color:#ffffff; }
-    .df-pill-version { background:#2e7d32; color:#ffffff; }
-    .df-pill-tmdb { background:#37474f; color:#ffffff; }
-    .df-pill-low { background:#6d4c41; color:#ffffff; }
-    .df-group { margin:1.5em 0; width:100%; box-sizing:border-box; }
-    .df-group-card { background:#1b1b1b; border-radius:10px; padding:14px 18px; box-sizing:border-box; }
-    .df-table-wrap { overflow-x:auto; width:100%; box-sizing:border-box; padding-right:8px; margin-top:8px; }
-  </style>
-
   <div id="DuplicateFinderConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
        data-require="emby-input,emby-button,emby-checkbox">
     <div data-role="content">
@@ -52,7 +35,7 @@
         </form>
 
         <h2>Detection</h2>
-        <p style="opacity:.8">Read-only. Nothing is deleted in this version.</p>
+        <p style="opacity:.8">Read-only. Nothing is deleted in this version. The scan does not read file contents; use <b>Verify identical</b> on a group to check its hash.</p>
         <div id="error" style="color:#ff8a80;margin:0.5em 0;"></div>
         <div id="scope" style="font-size:1.1em;margin:0.5em 0;"></div>
         <div id="cards" style="display:flex;gap:1.5em;flex-wrap:wrap;margin:1em 0;"></div>
@@ -81,6 +64,24 @@
           $('error').textContent = 'Error: ' + (err && err.message ? err.message : err);
         };
 
+        // Pills and buttons use inline styles only. Page-level <style> blocks are not applied here.
+        var pill = function (bg, text) {
+          return '<span style="display:inline-block;padding:3px 12px;border-radius:999px;font-size:0.85em;font-weight:600;color:#ffffff;background:' + bg + ';">' + text + '</span>';
+        };
+
+        // Both action buttons share the same shape. Only the colors differ.
+        var btnShape = 'display:block;box-sizing:border-box;width:150px;padding:9px 12px;border-radius:6px;'
+          + 'font-weight:600;font-size:0.95em;text-align:center;text-decoration:none;white-space:nowrap;'
+          + 'border:1px solid transparent;cursor:pointer;margin:0 auto;';
+        var btnOpen = btnShape + 'background:#00a4dc;color:#ffffff;';
+        var btnDelete = btnShape + 'background:#2b2b2b;color:#9e9e9e;border:1px dashed #b71c1c;cursor:not-allowed;';
+        var btnVerify = 'display:inline-block;box-sizing:border-box;padding:9px 16px;border-radius:6px;'
+          + 'font-weight:600;font-size:0.95em;text-decoration:none;white-space:nowrap;border:none;cursor:pointer;'
+          + 'background:#6a1b9a;color:#ffffff;';
+        var btnVerifying = 'display:inline-block;box-sizing:border-box;padding:9px 16px;border-radius:6px;'
+          + 'font-weight:600;font-size:0.95em;white-space:nowrap;border:none;'
+          + 'background:#3a3a3a;color:#bdbdbd;cursor:wait;';
+
         var mark = function (r) {
           if (r === 'keep') return '<span title="Keep (recommended)" style="color:#66bb6a;font-size:1.4em;font-weight:700;">&#10004;</span>';
           if (r === 'remove') return '<span title="Remove candidate" style="color:#ef5350;font-size:1.4em;font-weight:700;">&#10006;</span>';
@@ -108,27 +109,34 @@
         };
 
         var kindPill = function (g) {
-          if (g.Kind === 'identical') return '<span class="df-pill df-pill-identical">Identical: same content, you choose which to keep</span>';
-          if (g.Kind === 'same-spec') return '<span class="df-pill df-pill-spec">Same specs, different content: review</span>';
-          return '<span class="df-pill df-pill-version">Different versions</span>';
+          if (g.Kind === 'identical') return pill('#1565c0', 'Identical: same content, you choose which to keep');
+          if (g.Kind === 'same-spec') return pill('#ef6c00', 'Same specs, different content: review');
+          if (g.Kind === 'candidate') return pill('#6a1b9a', 'Same specs and size: hash not checked');
+          return pill('#2e7d32', 'Different versions');
         };
         var confPill = function (g) {
-          return g.Confidence === 'low'
-            ? '<span class="df-pill df-pill-low">Title and year only</span>'
-            : '<span class="df-pill df-pill-tmdb">Matched by TMDb ID</span>';
+          return g.Confidence === 'low' ? pill('#6d4c41', 'Title and year only') : pill('#37474f', 'Matched by TMDb ID');
+        };
+
+        var verifyControl = function (g) {
+          if (g.Kind !== 'candidate') return '';
+          if (g.VerifyState === 'running') {
+            return '<button type="button" disabled style="' + btnVerifying + '">Verifying hash...</button>';
+          }
+          var note = g.VerifyState === 'failed' ? '<span style="color:#ff8a80;margin-left:10px;">Hash check failed: ' + esc(g.VerifyError) + '</span>' : '';
+          return '<button type="button" data-verify="' + esc(g.Id) + '" style="' + btnVerify + '">Verify identical (hash)</button>' + note;
         };
 
         function renderGroups(j) {
-          var groups = j.Groups;
-          var identical = groups.filter(function (g) { return g.Kind === 'identical'; }).length;
-          var spec = groups.filter(function (g) { return g.Kind === 'same-spec'; }).length;
-          var versions = groups.filter(function (g) { return g.Kind === 'version'; }).length;
+          var groups = j.Groups || [];
+          var count = function (k) { return groups.filter(function (g) { return g.Kind === k; }).length; };
           var low = groups.filter(function (g) { return g.Confidence === 'low'; }).length;
           $('summary').innerHTML = '<p><b>' + groups.length + '</b> groups: '
-            + '<span class="df-pill df-pill-identical">' + identical + ' identical</span> '
-            + '<span class="df-pill df-pill-spec">' + spec + ' same specs, different content</span> '
-            + '<span class="df-pill df-pill-version">' + versions + ' different versions</span> '
-            + '<span class="df-pill df-pill-low">' + low + ' title only</span></p>'
+            + pill('#1565c0', count('identical') + ' identical') + ' '
+            + pill('#6a1b9a', count('candidate') + ' not verified') + ' '
+            + pill('#ef6c00', count('same-spec') + ' same specs, different content') + ' '
+            + pill('#2e7d32', count('version') + ' different versions') + ' '
+            + pill('#6d4c41', low + ' title only') + '</p>'
             + '<p style="opacity:.75">&#10004; keep (recommended) &nbsp; &#10006; remove candidate &nbsp; '
             + '= identical copies, you choose &nbsp; ? review. Keep score: higher means better to keep. Hover a score for its breakdown.</p>';
 
@@ -140,8 +148,8 @@
           $('results').innerHTML = groups.map(function (g) {
             var rows = g.Versions.map(function (v) {
               var actions = '<div style="display:flex;flex-direction:column;gap:8px;align-items:center;">'
-                + '<button type="button" class="df-btn df-btn-disabled" disabled title="Deletion comes in a later version">Delete (later)</button>'
-                + '<a class="df-btn df-btn-open" target="_blank" rel="noopener" href="' + esc(movieUrl(v.ItemId)) + '">Open movie</a>'
+                + '<button type="button" disabled title="Deletion comes in a later version" style="' + btnDelete + '">Delete (later)</button>'
+                + '<a target="_blank" rel="noopener" href="' + esc(movieUrl(v.ItemId)) + '" style="' + btnOpen + '">Open movie</a>'
                 + '</div>';
               return '<tr>'
                 + td(mark(v.Recommendation))
@@ -157,10 +165,12 @@
                 + '</tr>';
             }).join('');
 
-            return '<div class="df-group"><div class="df-group-card">'
+            return '<div style="margin:1.5em 0;width:100%;box-sizing:border-box;">'
+              + '<div style="background:#1b1b1b;border-radius:10px;padding:14px 18px;box-sizing:border-box;">'
               + '<h3 style="margin:0 0 4px 0;">' + esc(g.Title) + (g.Year ? ' (' + g.Year + ')' : '') + '</h3>'
-              + '<div style="margin:4px 0 6px 0;">' + kindPill(g) + ' ' + confPill(g) + '</div>'
-              + '<div class="df-table-wrap">'
+              + '<div style="margin:4px 0 8px 0;">' + kindPill(g) + ' ' + confPill(g) + '</div>'
+              + (g.Kind === 'candidate' ? '<div style="margin:0 0 10px 0;">' + verifyControl(g) + '</div>' : '')
+              + '<div style="overflow-x:auto;width:100%;box-sizing:border-box;padding-right:8px;">'
               + '<table style="border-collapse:collapse;width:100%;font-size:0.95em;">'
               + '<thead><tr>'
               + th('Keep') + th('File', { left: true }) + th('Size') + th('Resolution') + th('Codec')
@@ -185,11 +195,22 @@
           }).catch(showError);
         }
 
+        // One polling loop at a time. It stops when the scan and all hash checks are finished.
+        var pollTimer = null;
+        function schedulePoll() {
+          if (pollTimer === null) {
+            pollTimer = setTimeout(function () { pollTimer = null; poll(); }, 2000);
+          }
+        }
+
         function poll() {
           return ApiClient.getJSON(ApiClient.getUrl('DuplicateFinder/Status')).then(function (j) {
             $('status').textContent = 'Status: ' + j.State + (j.Error ? ' - ' + j.Error : '');
-            if (j.State === 'running') { setTimeout(poll, 2000); return; }
+            var groups = j.Groups || [];
+            var verifying = groups.some(function (g) { return g.VerifyState === 'running'; });
+            if (j.State === 'running') { schedulePoll(); return; }
             if (j.State === 'done') { renderGroups(j); }
+            if (verifying) { schedulePoll(); }
           }).catch(showError);
         }
 
@@ -214,6 +235,14 @@
 
         $('startScan').addEventListener('click', function () {
           ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('DuplicateFinder/Start') })
+            .then(poll).catch(showError);
+        });
+
+        // Verify buttons are rendered inside #results, so one listener handles them all.
+        $('results').addEventListener('click', function (e) {
+          var gid = e.target && e.target.getAttribute ? e.target.getAttribute('data-verify') : null;
+          if (!gid) { return; }
+          ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('DuplicateFinder/Verify?groupId=' + encodeURIComponent(gid)) })
             .then(poll).catch(showError);
         });
       })();

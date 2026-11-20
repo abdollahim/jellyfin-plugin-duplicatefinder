@@ -26,4 +26,10 @@ public class DuplicateFinderController : ControllerBase
 
     [HttpGet("Status")]
     public ActionResult<ScanJob> Status() => _service.Job;
+
+    [HttpPost("Verify")]
+    public IActionResult Verify([FromQuery] string groupId)
+    {
+        return _service.StartVerify(groupId) ? Accepted() : NotFound();
+    }
 }
