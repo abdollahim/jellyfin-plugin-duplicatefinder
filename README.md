@@ -26,7 +26,7 @@ The DLL is written to `src/Jellyfin.Plugin.DuplicateFinder/bin/Release/net10.0/`
 
 1. Stop Jellyfin.
 2. Create `plugins/DuplicateFinder_<version>/` in your Jellyfin data folder
-   (for example `C:\ProgramData\Jellyfin\Server\plugins\DuplicateFinder_0.2.0.0`).
+   (for example `C:\ProgramData\Jellyfin\Server\plugins\DuplicateFinder_0.2.1.0`).
 3. Copy `Jellyfin.Plugin.DuplicateFinder.dll` into that folder.
 4. Start Jellyfin and open **Dashboard → Plugins → Duplicate Finder**.
 

@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-20
+
+### Fixed
+- Build error: `BaseItemKind` namespace. Version 0.2.0 did not compile.
+
 ## [0.2.0] - 2026-11-20
 
 ### Added

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Jellyfin.Data.Enums;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.DuplicateFinder.Model;
 using MediaBrowser.Controller.Entities;
