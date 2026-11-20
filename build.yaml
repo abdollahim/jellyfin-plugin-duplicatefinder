@@ -1,11 +1,11 @@
 name: "Duplicate Finder"
 guid: "bd622318-4e30-4155-9f90-f0cbfeeedff2"
-version: "0.2.1.0"
+version: "0.3.4.0"
 targetAbi: "12.4.0.0"
 framework: "net10.0"
 owner: "Majid Abdollahi"
 overview: "Find duplicate movies in your library."
-description: "Finds exact and similar movie duplicates using TMDb IDs and normalized titles. Read-only."
+description: "Finds duplicate and similar movies using TMDb IDs, normalized titles, and file specs. Read-only."
 category: "General"
 artifacts:
   - "Jellyfin.Plugin.DuplicateFinder.dll"
